@@ -6,10 +6,10 @@
         ;*********************************************************
         begin
             ; parameters
-                his_date_start = 190001
-                his_date_end   = 201412
-                ssp_date_start = 201501
-                ssp_date_end   = 210012
+                his_date_start = 185011
+                his_date_end   = 201410
+                ssp_date_start = 201511
+                ssp_date_end   = 210010
                 latN           = 55
                 latS           = -55
                 lonW           = 0
@@ -32,25 +32,8 @@
                 fref          = addfile(diri_1(0),"r")
                 p             = fref->pr
                 diff_p_mm     = new((/110,360,r_end/), typeof(p),p@_FillValue)
+                diff_ttest    = diff_p_mm
                 delete(p)
-
-                ; observation
-                dir_ob      = "/glade/u/home/xinyang/work/datasets/ob/precip.mon.total.1x1.v2018.189101-201612.nc"
-                fob         = addfile(dir_ob,"r")
-                p_ob_t      = fob->precip    ; unit:mm/month
-                p_ob        = p_ob_t
-                p_ob@long_name= ""
-                p_ob@units  = ""
-                p_ob        = p_ob_t/30        ; unit mm/d
-                ptime_ob    = p_ob_t&time
-                optime_std  = cd_calendar(ptime_ob, -1)
-                stbn1_op    = ind(optime_std.eq.his_date_start) 
-                stbn2_op    = ind(optime_std.eq.his_date_end) 
-                p_shift_ob     = p_ob(stbn1_op:stbn2_op,{latS:latN},{lonW:lonE})
-
-                p_ob_shift_mean            = clmMonTLL(p_shift_ob)
-                p_ob_shift_Annual       = p_ob_shift_mean(0:11,:,:)
-                p_ob_shift_Annual_mean  = dim_avg_n_Wrap(p_ob_shift_Annual, 0)
 
             do i = (r_start-1),(r_end-1)
                 ;i=0
@@ -91,31 +74,79 @@
 
                     delete(p)
 
-            ; Remove annual cycle
-                ; Prepcipitation
-                    p_shift_mean            = clmMonTLL(p_shift)
-                    p_shift_Annual       = p_shift_mean(0:11,:,:)
-                    p_shift_Annual_mean  = dim_avg_n_Wrap(p_shift_Annual, 0)
+            ; time x lat x lon => time/12 x 12 x lat lon 
+            ; translate monthly data to yearly data
+                nttime1  = dimsizes(p_shift(:,0,0))
+                nttime2  = dimsizes(pp_shift(:,0,0))
+                nlat     = dimsizes(p_shift(0,:,0))
+                nlon     = dimsizes(p_shift(0,0,:))
 
-                    pp_shift_mean           = clmMonTLL(pp_shift)
-                    pp_shift_Annual      = pp_shift_mean(0:11,:,:)
-                    pp_shift_Annual_mean = dim_avg_n_Wrap(pp_shift_Annual, 0)
+                p_shift_tran            = reshape(p_shift,(/nttime1/12,12,nlat,nlon/))
+                p_shift_tran!0          = "time"
+                p_shift_tran!1          = "mon"
+                p_shift_tran!2          = "lat"
+                p_shift_tran!3          = "lon"
+                p_shift_tran&time       = p_shift&time(0:nttime1/12-1)
+                p_shift_tran&lat        = p_shift&lat
+                p_shift_tran&lon        = p_shift&lon
+                p_shift_tran&mon        = (/1,2,3,4,5,6,7,8,9,10,11,12/)
+                p_shift_tran@long_name= ""
+                p_shift_tran@units= ""
+
+                pp_shift_tran           = reshape(pp_shift,(/nttime2/12,12,nlat,nlon/))
+                pp_shift_tran!0          = "time"
+                pp_shift_tran!1          = "mon"
+                pp_shift_tran!2          = "lat"
+                pp_shift_tran!3          = "lon"
+                pp_shift_tran&time       = pp_shift&time(0:nttime2/12-1)
+                pp_shift_tran&lat        = pp_shift&lat
+                pp_shift_tran&lon        = pp_shift&lon
+                pp_shift_tran&mon        = (/1,2,3,4,5,6,7,8,9,10,11,12/)
+                pp_shift_tran@long_name= ""
+                pp_shift_tran@units= ""
+
+                p_shift_NDJFM       = p_shift_tran(:,0:4,:,:)
+                pp_shift_NDJFM      = pp_shift_tran(:,0:4,:,:)
+
+
+                p_shift_NDJFM_ts    = dim_avg_n_Wrap(p_shift_NDJFM, 1)
+                pp_shift_NDJFM_ts   = dim_avg_n_Wrap(pp_shift_NDJFM, 1)
+
+                p_shift_NDJFM_mean  = dim_avg_n_Wrap(p_shift_NDJFM_ts, 0)
+                pp_shift_NDJFM_mean = dim_avg_n_Wrap(pp_shift_NDJFM_ts, 0)
+
+                p_shift_NDJFM_variance  = dim_variance_n(p_shift_NDJFM_ts, 0)
+                pp_shift_NDJFM_variance = dim_variance_n(pp_shift_NDJFM_ts, 0)
 
             ; ssp - his
-                diff_p    = p_shift_Annual_mean 
-                diff_p    = pp_shift_Annual_mean - p_shift_Annual_mean 
+                diff_p    = p_shift_NDJFM_mean 
+                diff_p    = pp_shift_NDJFM_mean - p_shift_NDJFM_mean 
 
-                diff_p_mm(:,:,i) = p_shift_Annual_mean
-                diff_p_mm@long_name= ""
-                diff_p_mm@units= ""
+                diff_p_mm(:,:,i) = diff_p
+
+            ;********************************************************
+            ; t test for two sample group (mean state check, p20)
+            ;********************************************************
+                tt                  = diff_p
+                tt                  = 0.
+                delete(tt@long_name)
+                s_square           = (p_shift_NDJFM_variance*(nttime1/12-1) + pp_shift_NDJFM_variance*(nttime2/12-1))/(nttime1/12+nttime2/12-2)
+                s                  =sqrt(s_square)
+                tt                  = (p_shift_NDJFM_mean - pp_shift_NDJFM_mean)/(s*(12/nttime1+12/nttime2)^(1/2))
+
+                diff_ttest(:,:,i) = tt
+                diff_ttest@long_name= ""
+                diff_ttest@units= ""
 
             end do
             print("Calculation done!")
+            print(max(diff_ttest))
+            print(min(diff_ttest))
 
 
             ; Plot
-                wks     = gsn_open_wks("pdf","/glade/work/xinyang/program/Amazon/cmip6/pics/pr_Annual_historical")             ; open a ps plot
-                nplots  = 15                   ; for numbers of plots
+                wks     = gsn_open_wks("pdf","/glade/work/xinyang/program/Amazon/cmip6/pics/pr_NDJFM_diff")             ; open a ps plot
+                nplots  = 14                   ; for numbers of plots
                 plot    = new(nplots,graphic)
                 poly    = new(nplots,graphic)
                 splot    = new(nplots,graphic)
@@ -133,7 +164,7 @@
                     ;  Shaded
                     ;res2@gsn_Add_Cyclic               = False
                     ;res2@cnFillPalette                = "temp_19lev"       ; set the color map
-                    res2@cnFillPalette                = "precip3_16lev"       ; set the color map
+                    res2@cnFillPalette                = "precip_diff_12lev"       ; set the color map
                     res2@lbLabelStride                = 2 
                     res2@mpFillOn                     = True
                     res2@mpLandFillColor              = "white"            ; set land to be gray
@@ -145,25 +176,18 @@
                     res2@tmXBMinorOn                  = True
                     res2@mpCenterLonF                 = 180
 
-                    res2@mpMinLonF                    = -120                 ; select a subregion
-                    res2@mpMaxLonF                    = 0
-                    res2@mpMinLatF                    = latS 
-                    res2@mpMaxLatF                    = latN
-                    res2@tmXBMinorOn                  = True
-                    res2@mpCenterLonF                 = -60
-
                     ;res2@lbLabelBarOn                 = True               ; turn off individual cb's
                     res2@lbLabelBarOn                 = False               ; turn off individual cb's
                     res2@lbOrientation                = "Horizontal"       ; vertical label bar
                     res2@pmLabelBarOrthogonalPosF     = 0.08               ; move label bar closer
 
                     res2@cnLevelSelectionMode         = "ManualLevels"     ; set manual contour levels
-                    res2@cnMinLevelValF               = 2               ; set min contour level
-                    res2@cnMaxLevelValF               = 14                ; set max contour level
-                    res2@cnLevelSpacingF              = 1                ; set contour spacing        
+                    res2@cnMinLevelValF               = -2.1               ; set min contour level
+                    res2@cnMaxLevelValF               = 2.1                ; set max contour level
+                    res2@cnLevelSpacingF              = 0.3                ; set contour spacing        
      
                     ; Title
-                    res2@gsnLeftString                = "historical: 190001-201412 "
+                    
                     ;res2@gsnLeftStringOrthogonalPosF = -0.001
                     res2@gsnStringFontHeightF         = 0.017
                     res2@gsnRightString               = ""
@@ -173,29 +197,62 @@
                       pres@gsLineColor       = "red"
                       pres@gsLineDashPattern = 0
                       pres@gsLineThicknessF  = 2
+
+                ; ========================= stippling ==============================
+                      sres0 = True                            ; res2 probability plots
+
+                      sres0@gsnDraw             = False       ; Do not draw plot
+                      sres0@gsnFrame            = False       ; Do not advance frome
+                      sres0@cnFillOn            = False
+
                       
+                      sres0@cnLevelSelectionMode =  "ExplicitLevels"       ; set explicit cnlev
+                      ;sres0@cnLevels              = (/1.8, 1.9, 2.0/)
+                      sres0@cnLevels              = (/-3,-1.645, 0, 1.645,3/)
+                      ;sres0@cnLevelSelectionMode = "ManualLevels" ; set manual contour levels
+                      ;sres0@cnMinLevelValF      = 1.5        ; set min contour level
+                      ;sres0@cnMaxLevelValF      = 3.0        ; set max contour level
+                      ;sres0@cnLevelSpacingF     = 0.1        ; set contour spacing
+
+                      sres0@cnInfoLabelOn       = False       ; turn off info label
+
+                      sres0@cnLinesOn           = False      ; do not draw contour lines
+                      sres0@cnLineLabelsOn      = False       ; do not draw contour labels
+
+                      sres0@cnFillScaleF        = 0.6         ; add extra density
+                      ;sres0@gsnAddCyclic                = True            ; add cyclic point
+
+                      
+
+                      sopt     = True
+                      sopt@gsnShadeFillType = "pattern"
+                      sopt@gsnShadeLow = 17 
+                      sopt@gsnShadeHigh = 17 
+                      sopt@gsnShadeDotSizeF = 1                           ; make dots larger
+                      
+
                 do i = (r_start-1),(r_end-1)
                     res2@gsnLeftString                = model_name(i)
-                    plot(i+1) = gsn_csm_contour_map_ce(wks,diff_p_mm(:,:,i),res2)
+                    plot(i)     = gsn_csm_contour_map_ce(wks,diff_p_mm(:,:,i),res2)
 
-                    poly(i+1) = gsn_add_shapefile_polylines(wks,plot(i+1),mpfilename,pres)
+                    poly(i)=gsn_add_shapefile_polylines(wks,plot(i),mpfilename,pres)
+
+                    splot(i)   = gsn_csm_contour(wks,diff_ttest(:,:,i), sres0)
+                    splot(i)   = gsn_contour_shade(splot(i), -1.645, 1.645, sopt)
+                    overlay(plot(i), splot(i))
                 end do
-
-                res2@gsnLeftString                = "Observation"
-                plot(0) = gsn_csm_contour_map_ce(wks,p_ob_shift_Annual_mean,res2)
-                poly(0) = gsn_add_shapefile_polylines(wks,plot(0),mpfilename,pres)
 
                 ; create panel
                     resP                                = True                ; modify the panel plot
-                    resP@gsnPanelFigureStrings          = (/"(a)","(b)","(c)","(d)","(e)","(f)","(g)","(h)","(i)","(j)","(k)","(l)","(m)","(n)","(o)"/)           ; add strings to panel
-                    resP@gsnPanelFigureStringsJust      = "TopLeft" 
-                    resP@gsnPanelMainString             = "pr (unit: mm/d): Annual Mean (190001-201412)"
+                    resP@gsnPanelFigureStrings          = (/"(a)","(b)","(c)","(d)","(e)","(f)","(g)","(h)","(i)","(j)","(k)","(l)","(m)","(n)"/)           ; add strings to panel
+                    resP@gsnPanelFigureStringsJust      = "TopLeft"
+                    resP@gsnPanelMainString             = "pr (unit: mm/d): NDJFM Mean (ssp585 - historical) "
                     resP@gsnPanelLabelBar               = True                ; add common colorbar
                     resP@gsnPanelRowSpec                = True                   ; tell panel what order to plot
                     resP@gsnPanelCenter                 = False
                     resP@lbLabelFontHeightF             = 0.007               ; make labels smaller
 
-                    gsn_panel(wks,plot,(/4,4,4,4/),resP)               ; now draw as one plot
+                    gsn_panel(wks,plot,(/3,3,3,3,2/),resP)               ; now draw as one plot
 
                     print("plot done!")
             end 

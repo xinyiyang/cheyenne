@@ -34,16 +34,21 @@
                 diff_p_mm     = new((/110,360,r_end/), typeof(p),p@_FillValue)
                 delete(p)
 
+
                 ; observation
                 ;dir_ob      = "/glade/u/home/xinyang/work/datasets/sst/HadISST_sst.nc.gz"
                 ;p_ob_t      = fob->sst    ; unit:C
+                dir_mask    = "/glade/work/xinyang/datasets/mask/lsmask.nc"
+                fm          = addfile(dir_mask,"r")
+                t_mask      = short2flt(fm->mask(0,:,:))
                 dir_ob      = "/glade/u/home/xinyang/work/datasets/sst/sst.mnmean.nc"
                 fob         = addfile(dir_ob,"r")
                 p_ob_t      = short2flt(fob->sst)    ; unit:C
-                p_ob        = p_ob_t
+                ;p_ob        = p_ob_t
+                p_ob        = mask(p_ob_t,t_mask,1)
+                copy_VarMeta(p_ob_t,p_ob)
                 p_ob@long_name= ""
                 p_ob@units  = ""
-                p_ob        = p_ob_t/1        ; unit mm/d
                 ptime_ob    = p_ob_t&time
                 optime_std  = cd_calendar(ptime_ob, -1)
                 stbn1_op    = ind(optime_std.eq.his_date_start) 
@@ -60,11 +65,12 @@
                 file2      = addfile(diri_2(i),"r")
                 p          = file1->tos     ;unit: C  
                 pp         = file2->tos     ;unit: C
-
                 p_t        = p
                 pp_t       = pp
-                p_t = where(p.eq.1,p@_FillValue,p)
-                pp_t = where(pp.eq.1,pp@_FillValue,pp)
+                p_t        = p*1          ; unit C
+                pp_t       = pp*1
+                p_t = mask(p_t, p_t.eq.1,False)
+                pp_t = mask(pp_t, pp_t.eq.1,False)
 
                 ptime      = p&time
                 pptime      = pp&time
@@ -136,7 +142,7 @@
                     ;  Shaded
                     ;res2@gsn_Add_Cyclic               = False
                     ;res2@cnFillPalette                = "temp_19lev"       ; set the color map
-                    res2@cnFillPalette                = "GMT_no_green"       ; set the color map
+                    res2@cnFillPalette                = "GMT_polar"       ; set the color map
                     res2@lbLabelStride                = 2 
                     res2@mpFillOn                     = True
                     res2@mpLandFillColor              = "white"            ; set land to be gray

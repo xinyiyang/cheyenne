@@ -76,8 +76,8 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                 diri_2        = "/glade/work/xinyang/cmip6/${scenario_2}/post-process/ensmean/${var}/"+fili_precip_2
                 ;;;;;; references
                 fref          = addfile(diri_1(0),"r")
-                p             = fref->${var}
-                diff_p_mm     = new((/110,360,r_end/), typeof(p),p@_FillValue)
+                p             = fref->${var}(:,{latS:latN},{lonW:lonE})
+                diff_p_mm     = new((/dimsizes(p(0,:,0)),dimsizes(p(0,0,:)),r_end/), typeof(p),p@_FillValue)
                 diff_ttest    = diff_p_mm
                 delete(p)
 
@@ -120,15 +120,49 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
 
                     delete(p)
 
-            ; Remove annual cycle
-                ; Prepcipitation
-                    p_shift_mean            = clmMonTLL(p_shift)
-                    p_shift_${season}       = p_shift_mean(${season_n},:,:)
-                    p_shift_${season}_mean  = dim_avg_n_Wrap(p_shift_${season}, 0)
+            ; time x lat x lon => time/12 x 12 x lat lon 
+            ; translate monthly data to yearly data
+                nttime1  = dimsizes(p_shift(:,0,0))
+                nttime2  = dimsizes(pp_shift(:,0,0))
+                nlat     = dimsizes(p_shift(0,:,0))
+                nlon     = dimsizes(p_shift(0,0,:))
 
-                    pp_shift_mean           = clmMonTLL(pp_shift)
-                    pp_shift_${season}      = pp_shift_mean(${season_n},:,:)
-                    pp_shift_${season}_mean = dim_avg_n_Wrap(pp_shift_${season}, 0)
+                p_shift_tran            = reshape(p_shift,(/nttime1/12,12,nlat,nlon/))
+                p_shift_tran!0          = "time"
+                p_shift_tran!1          = "mon"
+                p_shift_tran!2          = "lat"
+                p_shift_tran!3          = "lon"
+                p_shift_tran&time       = p_shift&time(0:nttime1/12-1)
+                p_shift_tran&lat        = p_shift&lat
+                p_shift_tran&lon        = p_shift&lon
+                p_shift_tran&mon        = (/1,2,3,4,5,6,7,8,9,10,11,12/)
+                p_shift_tran@long_name= ""
+                p_shift_tran@units= ""
+
+                pp_shift_tran           = reshape(pp_shift,(/nttime2/12,12,nlat,nlon/))
+                pp_shift_tran!0          = "time"
+                pp_shift_tran!1          = "mon"
+                pp_shift_tran!2          = "lat"
+                pp_shift_tran!3          = "lon"
+                pp_shift_tran&time       = pp_shift&time(0:nttime2/12-1)
+                pp_shift_tran&lat        = pp_shift&lat
+                pp_shift_tran&lon        = pp_shift&lon
+                pp_shift_tran&mon        = (/1,2,3,4,5,6,7,8,9,10,11,12/)
+                pp_shift_tran@long_name= ""
+                pp_shift_tran@units= ""
+
+                p_shift_${season}       = p_shift_tran(:,${season_n},:,:)
+                pp_shift_${season}      = pp_shift_tran(:,${season_n},:,:)
+
+
+                p_shift_${season}_ts    = dim_avg_n_Wrap(p_shift_${season}, 1)
+                pp_shift_${season}_ts   = dim_avg_n_Wrap(pp_shift_${season}, 1)
+
+                p_shift_${season}_mean  = dim_avg_n_Wrap(p_shift_${season}_ts, 0)
+                pp_shift_${season}_mean = dim_avg_n_Wrap(pp_shift_${season}_ts, 0)
+
+                p_shift_${season}_variance  = dim_variance_n(p_shift_${season}_ts, 0)
+                pp_shift_${season}_variance = dim_variance_n(pp_shift_${season}_ts, 0)
 
             ; ssp - his
                 diff_p    = p_shift_${season}_mean 
@@ -139,17 +173,12 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
             ;********************************************************
             ; t test for two sample group (mean state check, p20)
             ;********************************************************
-                tt                  = pp_shift_Annual_mean
+                tt                  = diff_p
                 tt                  = 0.
                 delete(tt@long_name)
-                n                   = dimsizes(p_shift(:,0,0))
-                m                   = dimsizes(pp_shift(:,0,0))
-                p_shift_anom        = rmMonAnnCycTLL(p_shift)
-                pp_shift_anom       = rmMonAnnCycTLL(pp_shift)
-
-                s                   = sqrt((dim_avg_n_Wrap(p_shift_anom^2, 0)*n + dim_avg_n_Wrap(pp_shift_anom^2, 0)*m)/(m+n-2))
-                ;tt                  = abs((p_shift_Annual_mean - pp_shift_Annual_mean)/(s*(1/n+1/m)^(1/2)))
-                tt                  = (p_shift_Annual_mean - pp_shift_Annual_mean)/(s*(1/n+1/m)^(1/2))
+                s_square           = (p_shift_${season}_variance*(nttime1/12-1) + pp_shift_${season}_variance*(nttime2/12-1))/(nttime1/12+nttime2/12-2)
+                s                  =sqrt(s_square)
+                tt                  = (p_shift_${season}_mean - pp_shift_${season}_mean)/(s*(12/nttime1+12/nttime2)^(1/2))
 
                 diff_ttest(:,:,i) = tt
                 diff_ttest@long_name= ""
@@ -186,12 +215,12 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                     res2@mpFillOn                     = True
                     res2@mpLandFillColor              = "white"            ; set land to be gray
 
-                    ;res2@mpMinLonF                    = lonW+deg                 ; select a subregion
-                    ;res2@mpMaxLonF                    = lonE-deg
+                    res2@mpMinLonF                    = -120                 ; select a subregion
+                    res2@mpMaxLonF                    = 0
                     res2@mpMinLatF                    = latS 
                     res2@mpMaxLatF                    = latN
                     res2@tmXBMinorOn                  = True
-                    res2@mpCenterLonF                 = 180
+                    res2@mpCenterLonF                 = -60
 
                     ;res2@lbLabelBarOn                 = True               ; turn off individual cb's
                     res2@lbLabelBarOn                 = False               ; turn off individual cb's
@@ -225,7 +254,7 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                       
                       sres0@cnLevelSelectionMode =  "ExplicitLevels"       ; set explicit cnlev
                       ;sres0@cnLevels              = (/1.8, 1.9, 2.0/)
-                      sres0@cnLevels              = (/-3,-1.9, 0, 1.9,3/)
+                      sres0@cnLevels              = (/-3,-1.645, 0, 1.645,3/)
                       ;sres0@cnLevelSelectionMode = "ManualLevels" ; set manual contour levels
                       ;sres0@cnMinLevelValF      = 1.5        ; set min contour level
                       ;sres0@cnMaxLevelValF      = 3.0        ; set max contour level
@@ -255,7 +284,7 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                     poly(i)=gsn_add_shapefile_polylines(wks,plot(i),mpfilename,pres)
 
                     splot(i)   = gsn_csm_contour(wks,diff_ttest(:,:,i), sres0)
-                    splot(i)   = gsn_contour_shade(splot(i), -1.9, 1.9, sopt)
+                    splot(i)   = gsn_contour_shade(splot(i), -1.645, 1.645, sopt)
                     overlay(plot(i), splot(i))
                 end do
 
@@ -264,12 +293,14 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                     resP@gsnPanelFigureStrings          = (/"(a)","(b)","(c)","(d)","(e)","(f)","(g)","(h)","(i)","(j)","(k)","(l)","(m)","(n)"/)           ; add strings to panel
                     resP@gsnPanelFigureStringsJust      = "TopLeft"
                     resP@gsnPanelMainString             = "${var} (unit: mm/d): ${season} Mean (${scenario_2} - ${scenario_1}) "
+                    resP@gsnPanelMainFontHeightF        = 0.012
+                    resP@gsnPanelFigureStringsFontHeightF = 0.007
                     resP@gsnPanelLabelBar               = True                ; add common colorbar
                     resP@gsnPanelRowSpec                = True                   ; tell panel what order to plot
                     resP@gsnPanelCenter                 = False
                     resP@lbLabelFontHeightF             = 0.007               ; make labels smaller
 
-                    gsn_panel(wks,plot,(/3,3,3,3,2/),resP)               ; now draw as one plot
+                    gsn_panel(wks,plot,(/4,4,4,2/),resP)               ; now draw as one plot
 
                     print("plot done!")
             end 

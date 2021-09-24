@@ -191,6 +191,13 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                     res2@tmXBMinorOn                  = True
                     res2@mpCenterLonF                 = 180
 
+                    res2@mpMinLonF                    = -120                 ; select a subregion
+                    res2@mpMaxLonF                    = 0
+                    res2@mpMinLatF                    = latS 
+                    res2@mpMaxLatF                    = latN
+                    res2@tmXBMinorOn                  = True
+                    res2@mpCenterLonF                 = -60
+
                     ;res2@lbLabelBarOn                 = True               ; turn off individual cb's
                     res2@lbLabelBarOn                 = False               ; turn off individual cb's
                     res2@lbOrientation                = "Horizontal"       ; vertical label bar
@@ -234,7 +241,7 @@ cat > ${mdir}/code/inside_code/${var}_${season}.ncl << EOF
                     resP@gsnPanelCenter                 = False
                     resP@lbLabelFontHeightF             = 0.007               ; make labels smaller
 
-                    gsn_panel(wks,plot,(/3,3,3,3,3/),resP)               ; now draw as one plot
+                    gsn_panel(wks,plot,(/4,4,4,4/),resP)               ; now draw as one plot
 
                     print("plot done!")
             end 

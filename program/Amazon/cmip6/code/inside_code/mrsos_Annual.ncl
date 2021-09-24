@@ -6,10 +6,8 @@
         ;*********************************************************
         begin
             ; parameters
-                his_date_start = 190001
+                his_date_start = 198101
                 his_date_end   = 201412
-                ssp_date_start = 201501
-                ssp_date_end   = 210012
                 latN           = 55
                 latS           = -55
                 lonW           = 0
@@ -17,54 +15,56 @@
                 ; deg is used to tune the range of longitude    
                 deg            = 0
                 r_start        = 1
-                r_end          = 14
-                model_name     = (/"MME","ACCESS-CM2", "ACCESS-ESM1-5", "BCC-CSM2-MR", "CanESM5", "CESM2", "E3SM-1-0", "FGOALS-f3-L", "GFDL-ESM4", "IPSL-CM6A-LR", "MIROC6", "MRI-ESM2-0", "NESM3", "NorESM2-MM"/)
+                r_end          = 12
+                ;model_name     = (/"MME","ACCESS-CM2", "ACCESS-ESM1-5", "BCC-CSM2-MR", "CanESM5", "CESM2", "E3SM-1-0", "FGOALS-f3-L", "GFDL-ESM4", "IPSL-CM6A-LR", "MIROC6", "MRI-ESM2-0", "NorESM2-MM"/)
+                model_name     = (/"MME","ACCESS-CM2", "ACCESS-ESM1-5", "BCC-CSM2-MR", "CanESM5", "CESM2", "E3SM-1-0", "GFDL-ESM4","IPSL-CM6A-LR","MIROC6", "MRI-ESM2-0", "NorESM2-MM"/)
                
                  
                 mpfilename="/glade/work/xinyang/program/Amazon/mapdata/amazon_sensulatissimo_gmm_v1.shp"  
 
-                fili_precip_1 = "pr_Amon_"+model_name+"_historical_ensmean_1x1_185001-201412.nc"
-                fili_precip_2 = "pr_Amon_"+model_name+"_ssp585_ensmean_1x1_201501-210012.nc"
+                fili_precip_1 = "mrsos_Lmon_"+model_name+"_historical_ensmean_1x1_185001-201412.nc"
 
-                diri_1        = "/glade/work/xinyang/cmip6/historical/post-process/ensmean/pr/"+fili_precip_1
-                diri_2        = "/glade/work/xinyang/cmip6/ssp585/post-process/ensmean/pr/"+fili_precip_2
+                diri_1        = "/glade/work/xinyang/cmip6/historical/post-process/ensmean/mrsos/"+fili_precip_1
+                
                 ;;;;;; references
                 fref          = addfile(diri_1(0),"r")
-                p             = fref->pr
+                p             = fref->mrsos
                 diff_p_mm     = new((/110,360,r_end/), typeof(p),p@_FillValue)
                 delete(p)
 
                 ; observation
-                dir_ob      = "/glade/u/home/xinyang/work/datasets/ob/precip.mon.total.1x1.v2018.189101-201612.nc"
+                dir_mask    = "/glade/work/xinyang/datasets/mask/lsmask.nc"
+                fm          = addfile(dir_mask,"r")
+                t_mask      = short2flt(fm->mask(0,::1,:))    ; lat S to N
+                dir_ob      = "/glade/work/xinyang/datasets/era5_land/volumetric_soil_water_layer_1.1981-2020.monthly.1x1.nc"
                 fob         = addfile(dir_ob,"r")
-                p_ob_t      = fob->precip    ; unit:mm/month
+                p_ob_t      = short2flt(fob->swvl1)    
                 p_ob        = p_ob_t
                 p_ob@long_name= ""
                 p_ob@units  = ""
-                p_ob        = p_ob_t/30        ; unit mm/d
+                p_ob        = p_ob_t*70   
+                ;t_mask&lon  = p_ob_t&lon
+                
                 ptime_ob    = p_ob_t&time
                 optime_std  = cd_calendar(ptime_ob, -1)
                 stbn1_op    = ind(optime_std.eq.his_date_start) 
                 stbn2_op    = ind(optime_std.eq.his_date_end) 
                 p_shift_ob     = p_ob(stbn1_op:stbn2_op,{latS:latN},{lonW:lonE})
+                tt_mask         = t_mask({latS:latN},{lonW:lonE})
 
                 p_ob_shift_mean            = clmMonTLL(p_shift_ob)
                 p_ob_shift_Annual       = p_ob_shift_mean(0:11,:,:)
                 p_ob_shift_Annual_mean  = dim_avg_n_Wrap(p_ob_shift_Annual, 0)
+                ;p_ob_shift_Annual_mean  = where(tt_mask.eq.0,p_ob_shift_Annual_mean, p_ob_t@_FillValue) 
 
             do i = (r_start-1),(r_end-1)
                 ;i=0
                 file1      = addfile(diri_1(i),"r")
-                file2      = addfile(diri_2(i),"r")
-                p          = file1->pr     ;unit: kg m-2 s-1  == mm/s  
-                pp         = file2->pr     ;unit: kg m-2 s-1  == mm/s  
-                p_t        = p
-                pp_t       = pp
-                p_t        = p*24*60*60          ; unit mm/s to mm/day
-                pp_t       = pp*24*60*60
-
+                p          = file1->mrsos     ;unit: C  
+                p_t        = p        ; unit kg/m^2 -> mm
+                ;p_t        = where(t_mask.eq.0,p_t, p_t@_FillValue)
                 ptime      = p&time
-                pptime      = pp&time
+
 
                 plat       = p&lat
                 plon       = p&lon
@@ -80,14 +80,11 @@
                             stbn1_p    = ind(ptime_std.eq.his_date_start) 
                             stbn2_p    = ind(ptime_std.eq.his_date_end)  
 
-                            pptime_std = cd_calendar(pptime, -1)
-                            stbn1_pp   = ind(pptime_std.eq.ssp_date_start) 
-                            stbn2_pp   = ind(pptime_std.eq.ssp_date_end)  
 
                     ; Specified location and time span 
                         ; Prepcipitation
                             p_shift       = p_t(stbn1_p:stbn2_p,{latS:latN},{lonW:lonE})
-                            pp_shift      = pp_t(stbn1_pp:stbn2_pp,{latS:latN},{lonW:lonE}) 
+
 
                     delete(p)
 
@@ -97,25 +94,25 @@
                     p_shift_Annual       = p_shift_mean(0:11,:,:)
                     p_shift_Annual_mean  = dim_avg_n_Wrap(p_shift_Annual, 0)
 
-                    pp_shift_mean           = clmMonTLL(pp_shift)
-                    pp_shift_Annual      = pp_shift_mean(0:11,:,:)
-                    pp_shift_Annual_mean = dim_avg_n_Wrap(pp_shift_Annual, 0)
 
             ; ssp - his
                 diff_p    = p_shift_Annual_mean 
-                diff_p    = pp_shift_Annual_mean - p_shift_Annual_mean 
+                diff_p    = where(tt_mask.eq.0,diff_p, p_t@_FillValue) 
 
-                diff_p_mm(:,:,i) = p_shift_Annual_mean
+
+                diff_p_mm(:,:,i) = diff_p
                 diff_p_mm@long_name= ""
                 diff_p_mm@units= ""
 
             end do
+            ;diff_p = diff_p_mm(:,:,7)*100
+            ;diff_p_mm(:,:,7) = diff_p
             print("Calculation done!")
 
 
             ; Plot
-                wks     = gsn_open_wks("pdf","/glade/work/xinyang/program/Amazon/cmip6/pics/pr_Annual_historical")             ; open a ps plot
-                nplots  = 15                   ; for numbers of plots
+                wks     = gsn_open_wks("pdf","/glade/work/xinyang/program/Amazon/cmip6/pics/mrsos_Annual_historical")             ; open a ps plot
+                nplots  = 12+1                   ; for numbers of plots
                 plot    = new(nplots,graphic)
                 poly    = new(nplots,graphic)
                 splot    = new(nplots,graphic)
@@ -132,25 +129,26 @@
                     
                     ;  Shaded
                     ;res2@gsn_Add_Cyclic               = False
-                    ;res2@cnFillPalette                = "temp_19lev"       ; set the color map
-                    res2@cnFillPalette                = "precip3_16lev"       ; set the color map
+                    ;res2@cnFillPalette                = "CBR_drywet"       ; set the color map
+                    ;res2@cnFillPalette                = "CBR_wet"       ; set the color map
+                    res2@cnFillPalette                = "CBR_drywet"       ; set the color map
                     res2@lbLabelStride                = 2 
                     res2@mpFillOn                     = True
                     res2@mpLandFillColor              = "white"            ; set land to be gray
 
-                    ;res2@mpMinLonF                    = lonW+deg                 ; select a subregion
-                    ;res2@mpMaxLonF                    = lonE-deg
-                    res2@mpMinLatF                    = latS 
-                    res2@mpMaxLatF                    = latN
-                    res2@tmXBMinorOn                  = True
-                    res2@mpCenterLonF                 = 180
-
+                    ;res2@mpMinLatF                    = latS 
+                    ;res2@mpMaxLatF                    = latN
+                    ;res2@tmXBMinorOn                  = True
+                    ;res2@mpCenterLonF                 = 180
+                    ;==============Amazon========================
                     res2@mpMinLonF                    = -120                 ; select a subregion
                     res2@mpMaxLonF                    = 0
                     res2@mpMinLatF                    = latS 
-                    res2@mpMaxLatF                    = latN
+                    res2@mpMaxLatF                    = 35
                     res2@tmXBMinorOn                  = True
                     res2@mpCenterLonF                 = -60
+                    ;============================================
+
 
                     ;res2@lbLabelBarOn                 = True               ; turn off individual cb's
                     res2@lbLabelBarOn                 = False               ; turn off individual cb's
@@ -158,14 +156,14 @@
                     res2@pmLabelBarOrthogonalPosF     = 0.08               ; move label bar closer
 
                     res2@cnLevelSelectionMode         = "ManualLevels"     ; set manual contour levels
-                    res2@cnMinLevelValF               = 2               ; set min contour level
-                    res2@cnMaxLevelValF               = 14                ; set max contour level
-                    res2@cnLevelSpacingF              = 1                ; set contour spacing        
+                    res2@cnMinLevelValF               = 10               ; set min contour level
+                    res2@cnMaxLevelValF               = 32                ; set max contour level
+                    res2@cnLevelSpacingF              = 2                ; set contour spacing        
      
                     ; Title
-                    res2@gsnLeftString                = "historical: 190001-201412 "
+                    res2@gsnLeftString                = "historical: 198101-201412 "
                     ;res2@gsnLeftStringOrthogonalPosF = -0.001
-                    res2@gsnStringFontHeightF         = 0.017
+                    res2@gsnStringFontHeightF         = 0.022
                     res2@gsnRightString               = ""
 
                     ; adding Amazon outline
@@ -181,15 +179,17 @@
                     poly(i+1) = gsn_add_shapefile_polylines(wks,plot(i+1),mpfilename,pres)
                 end do
 
-                res2@gsnLeftString                = "Observation"
+                res2@gsnLeftString                = "Reanalysis"
                 plot(0) = gsn_csm_contour_map_ce(wks,p_ob_shift_Annual_mean,res2)
                 poly(0) = gsn_add_shapefile_polylines(wks,plot(0),mpfilename,pres)
 
                 ; create panel
                     resP                                = True                ; modify the panel plot
-                    resP@gsnPanelFigureStrings          = (/"(a)","(b)","(c)","(d)","(e)","(f)","(g)","(h)","(i)","(j)","(k)","(l)","(m)","(n)","(o)"/)           ; add strings to panel
+                    resP@gsnPanelFigureStrings          = (/"(a)","(b)","(c)","(d)","(e)","(f)","(g)","(h)","(i)","(j)","(k)","(l)","(m)","(n)"/)           ; add strings to panel
+                    resP@gsnPanelFigureStringsFontHeightF = 0.01
                     resP@gsnPanelFigureStringsJust      = "TopLeft" 
-                    resP@gsnPanelMainString             = "pr (unit: mm/d): Annual Mean (190001-201412)"
+                    resP@gsnPanelMainString             = "mrsos (unit: mm): Annual Mean (198101-201412)"
+                    resP@gsnPanelMainFontHeightF        = 0.01
                     resP@gsnPanelLabelBar               = True                ; add common colorbar
                     resP@gsnPanelRowSpec                = True                   ; tell panel what order to plot
                     resP@gsnPanelCenter                 = False
